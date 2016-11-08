@@ -11,6 +11,7 @@
 #define QUADRATIC_DISTANCE_TOLERANCE 3.0   // Minimum distance to make a curve
 
 #define             MAXIMUM_VERTECES 100000
+#define					   BASE_SIZE 300
 
 
 static GLKVector3 StrokeColor = { 0, 0, 0 };
@@ -68,14 +69,17 @@ static GLKVector3 perpendicular(PPSSignaturePoint p1, PPSSignaturePoint p2) {
 
 static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVector3 color) {
 
-    return (PPSSignaturePoint) {
-        {
-            (viewPoint.x / bounds.size.width * 2.0 - 1),
-            ((viewPoint.y / bounds.size.height) * 2.0 - 1) * -1,
-            0
-        },
-        color
-    };
+	float width = bounds.size.width / BASE_SIZE;
+	float height = bounds.size.height / BASE_SIZE;
+
+	return (PPSSignaturePoint) {
+		{
+			(viewPoint.x / bounds.size.width * (width * 2.0) - width),
+			((viewPoint.y / bounds.size.height) * (height * 2.0) - height) * -1,
+			0
+		},
+		color
+	};
 }
 
 
@@ -115,6 +119,7 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
 
 @implementation PPSSignatureView
 
+@synthesize hasSignature;
 
 - (void)commonInit {
     context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
@@ -144,11 +149,6 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
         UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tap:)];
         tap.cancelsTouchesInView = YES;
         [self addGestureRecognizer:tap];
-        
-        // Erase with long press
-        UILongPressGestureRecognizer *longer = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(longPress:)];
-        longer.cancelsTouchesInView = YES;
-        [self addGestureRecognizer:longer];
         
     } else [NSException raise:@"NSOpenGLES2ContextException" format:@"Failed to create OpenGL ES2 context"];
 }
@@ -198,11 +198,26 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
     }
 }
 
+- (void)layoutSubviews
+{
+	[super layoutSubviews];
+
+	[self setProjectionMatrix];
+}
+
+- (void)setProjectionMatrix
+{
+	float width = self.bounds.size.width / BASE_SIZE;
+	float height = self.bounds.size.height / BASE_SIZE;
+
+	GLKMatrix4 ortho = GLKMatrix4MakeOrtho(-width, width, -height, height, 0.1f, 2.0f);
+	effect.transform.projectionMatrix = ortho;
+}
 
 - (void)erase {
     length = 0;
     dotsLength = 0;
-    self.hasSignature = NO;
+    hasSignature = NO;
 	
 	[self setNeedsDisplay];
 }
@@ -272,10 +287,6 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
 }
 
 
-- (void)longPress:(UILongPressGestureRecognizer *)lp {
-    [self erase];
-}
-
 - (void)pan:(UIPanGestureRecognizer *)p {
     
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
@@ -309,7 +320,7 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
         addVertex(&length, startPoint);
         addVertex(&length, previousVertex);
 		
-		self.hasSignature = YES;
+		hasSignature = YES;
         
     } else if ([p state] == UIGestureRecognizerStateChanged) {
         
@@ -436,9 +447,8 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
 
 
     // Perspective
-    GLKMatrix4 ortho = GLKMatrix4MakeOrtho(-1, 1, -1, 1, 0.1f, 2.0f);
-    effect.transform.projectionMatrix = ortho;
-    
+	[self setProjectionMatrix];
+
     GLKMatrix4 modelViewMatrix = GLKMatrix4MakeTranslation(0.0f, 0.0f, -1.0f);
     effect.transform.modelviewMatrix = modelViewMatrix;
     
